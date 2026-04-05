@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: retainai_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: retainai_user
+      POSTGRES_PASSWORD: retainai_password
+      POSTGRES_DB: retainai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retainai_user -d retainai_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: retainai_api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://retainai_user:retainai_password@db:5432/retainai_db
+      - ENVIRONMENT=development
+    volumes:
+      - ./api:/app/api
+      - ./models:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mlflow
+    container_name: retainai_mlflow
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://retainai_user:retainai_password@db:5432/retainai_db
+      - MLFLOW_ARTIFACT_ROOT=./mlruns
+    volumes:
+      - ./mlruns:/app/mlruns
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
