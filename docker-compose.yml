@@ -54,6 +54,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fre
+    container_name: retainai_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:
