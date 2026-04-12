@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U retainai_user -d retainai_db"]
+      test: [ "CMD-SHELL", "pg_isready -U retainai_user -d retainai_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -50,11 +50,11 @@ services:
       - MLFLOW_BACKEND_STORE_URI=postgresql://retainai_user:retainai_password@db:5432/retainai_db
       - MLFLOW_ARTIFACT_ROOT=./mlruns
     volumes:
-      - ./mlruns:/app/mlruns
+      - ./mlruns:/mlruns
     depends_on:
       db:
         condition: service_healthy
-  
+
   frontend:
     build:
       context: .
