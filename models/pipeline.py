@@ -1,4 +1,8 @@
-import pandas as pd
+import os
+os.environ["MLFLOW_ARTIFACT_URI"] = "http://localhost:5000"
+os.environ["MLFLOW_TRACKING_URI"] = "http://localhost:5000"
+os.environ["MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD"] = "true"
+
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -10,6 +14,7 @@ from sklearn.metrics import (
 )
 import mlflow
 from mlflow.data import from_pandas
+from mlflow.models.signature import infer_signature
 
 def log_common():
     mlflow.log_params(common_params)
@@ -21,7 +26,10 @@ def log_common():
 # -------------------------------------------------------
 mlflow.end_run()
 mlflow.set_tracking_uri("http://localhost:5000")
+os.environ["MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD"] = "true"
+mlflow.set_registry_uri("http://localhost:5000")
 mlflow.set_experiment("Iris")
+
 mlflow.enable_system_metrics_logging()
 # mlflow.autolog()                    # Log tự động - Không nên dùng trong production
 
@@ -57,8 +65,8 @@ with mlflow.start_run(run_name="Classification") as parent_run:
      # ---------------------------------------------------
      # Child Runs
      # ---------------------------------------------------
-     for max_iter in [100, 200, 1000]:
-          with mlflow.start_run(run_name=f"LR_{max_iter}", nested=True):
+     for max_iter in [100, 200]:
+          with mlflow.start_run(run_name=f"LR_{max_iter}", nested=True) as child_run:
 
                log_common()
                
@@ -71,7 +79,7 @@ with mlflow.start_run(run_name="Classification") as parent_run:
                # Log model
                model_info = mlflow.sklearn.log_model(
                     sk_model=model, name="iris_model",
-                    registered_model_name=f"iris_model_{max_iter}"
+                    registered_model_name=f"iris_model_{max_iter}",
                )
 
                # Evaluate
@@ -87,9 +95,8 @@ with mlflow.start_run(run_name="Classification") as parent_run:
                plt.xlabel("Predicted")
                plt.ylabel("Actual")
                plt.title(f"Confusion Matrix (max_iter={max_iter})")
-
-               # mlflow.log_artifact(cm_file)
                mlflow.log_figure(plt.gcf(), f"confusion_matrix_{max_iter}.png")
+               # mlflow.log_artifact(f"confusion_matrix_{max_iter}.png", "model_plot")
                plt.close()
                
                mlflow.log_metrics({
@@ -98,30 +105,34 @@ with mlflow.start_run(run_name="Classification") as parent_run:
                     "recall": rec,
                     "f1": f1
                })
+
+               mlflow_run_id = child_run.info.run_id
+               print("MLFlow Run ID: ", mlflow_run_id)
                
 
 
-               iris_feature_names = datasets.load_iris().feature_names
-               df_test = pd.DataFrame(X_test, columns=iris_feature_names)
-               df_test["label"] = y_test
-               result = mlflow.models.evaluate(
-                    model_info.model_uri,
-                    df_test,
-                    targets="label",
-                    model_type="classifier",     # regressor
-                    evaluator_config={
-                         "log_explainer": True,
-                         "explainer_type": "exact",
-                    },
-               )
+               # iris_feature_names = datasets.load_iris().feature_names
+               # df_test = pd.DataFrame(X_test, columns=iris_feature_names)
+               # df_test["label"] = y_test
+               # result = mlflow.models.evaluate(
+               #      model_info.model_uri,
+               #      df_test,
+               #      targets="label",
+               #      model_type="classifier",     # regressor
+               #      evaluator_config={
+               #           "log_explainer": True,
+               #           "explainer_type": "exact",
+               #      },
+               # )
 
-               # Access metrics
-               for metric_name, value in result.metrics.items():
-                    print(f"{metric_name}: {value:.3f}")
+               # # Access metrics
+               # print(result.metrics.keys())
+               # for metric_name, value in result.metrics.items():
+               #      print(f"{metric_name}: {value:.3f}")
 
-               # Access artifacts (plots, tables)
-               for artifact_name, path in result.artifacts.items():
-                    print(f"{artifact_name}: {path}")
+               # # Access artifacts (plots, tables)
+               # for artifact_name, path in result.artifacts.items():
+               #      print(f"{artifact_name}: {path}")
 
                # # Access evaluation table
                # eval_table = result.tables["eval_results_table"]

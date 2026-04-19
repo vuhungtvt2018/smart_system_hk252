@@ -33,6 +33,7 @@ services:
     volumes:
       - ./api:/app/api
       - ./models:/app/models
+      - D:\mlruns:/mlruns
     depends_on:
       db:
         condition: service_healthy
@@ -48,7 +49,7 @@ services:
       - "5000:5000"
     environment:
       - MLFLOW_BACKEND_STORE_URI=postgresql://retainai_user:retainai_password@db:5432/retainai_db
-      - MLFLOW_ARTIFACT_ROOT=./mlruns
+      - MLFLOW_ARTIFACT_ROOT=/mlruns
     volumes:
       - ./mlruns:/mlruns
     depends_on:
