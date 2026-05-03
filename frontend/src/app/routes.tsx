@@ -10,6 +10,7 @@ import { Monitoring } from "./pages/Monitoring";
 import { UserManagement } from "./pages/admin/UserManagement";
 import { SystemConfig } from "./pages/admin/SystemConfig";
 import { AuditLog } from "./pages/admin/AuditLog";
+import { Training } from "./pages/Training";
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { path: "alerts", Component: Alerts },
       { path: "prediction", Component: Prediction },
       { path: "models", Component: ModelRegistry },
+      { path: "training", Component: Training },
       { path: "monitoring", Component: Monitoring },
       { path: "admin/users", Component: UserManagement },
       { path: "admin/config", Component: SystemConfig },

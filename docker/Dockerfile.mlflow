@@ -6,4 +6,7 @@ WORKDIR /app
 
 EXPOSE 5000
 
-CMD ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000", "--backend-store-uri", "postgresql://retainai_user:retainai_password@db:5432/retainai_db", "--default-artifact-root", "/ivs/my_folder/master/hk252/smart_system/smart_system_hk252/mlruns", "--serve-artifacts"]
+COPY docker/entrypoint.mlflow.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

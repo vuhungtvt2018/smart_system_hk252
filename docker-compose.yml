@@ -6,15 +6,15 @@ services:
     container_name: retainai_postgres
     restart: always
     environment:
-      POSTGRES_USER: retainai_user
-      POSTGRES_PASSWORD: retainai_password
-      POSTGRES_DB: retainai_db
+      POSTGRES_USER: ${POSTGRES_USER:-retainai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retainai_password}
+      POSTGRES_DB: ${POSTGRES_DB:-retainai_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U retainai_user -d retainai_db" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,14 +26,18 @@ services:
     container_name: retainai_api
     restart: always
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=postgresql://retainai_user:retainai_password@db:5432/retainai_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-retainai_user}:${POSTGRES_PASSWORD:-retainai_password}@db:5432/${POSTGRES_DB:-retainai_db}
       - ENVIRONMENT=development
+      - AIRFLOW_URL=${AIRFLOW_URL:-http://airflow:8080/api/v1/dags/retrain_pipeline/dagRuns}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./api:/app/api
       - ./models:/app/models
-      - D:\mlruns:/mlruns
+      - ./data:/app/data
+      - ${MLRUNS_PATH:-./mlruns}:/mlruns
     depends_on:
       db:
         condition: service_healthy
@@ -46,12 +50,12 @@ services:
     container_name: retainai_mlflow
     restart: always
     ports:
-      - "5000:5000"
+      - "${MLFLOW_PORT:-5000}:5000"
     environment:
-      - MLFLOW_BACKEND_STORE_URI=postgresql://retainai_user:retainai_password@db:5432/retainai_db
-      - MLFLOW_ARTIFACT_ROOT=/mlruns
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-retainai_user}:${POSTGRES_PASSWORD:-retainai_password}@db:5432/${POSTGRES_DB:-retainai_db}
+      - MLFLOW_ARTIFACT_ROOT=${MLFLOW_ARTIFACT_ROOT:-/mlruns}
     volumes:
-      - ./mlruns:/mlruns
+      - ${MLRUNS_PATH:-./mlruns}:/mlruns
     depends_on:
       db:
         condition: service_healthy
@@ -60,12 +64,47 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.fre
+      target: development
     container_name: retainai_frontend
     restart: always
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
     depends_on:
       - api
+    command: npm run dev -- --host 0.0.0.0
+
+  airflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.airflow
+    container_name: retainai_airflow
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=false
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - AIRFLOW_WWW_USER_USERNAME=admin
+      - AIRFLOW_WWW_USER_PASSWORD=admin
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./data:/app/data
+      - ./models:/app/models
+      - ${MLRUNS_PATH:-./mlruns}:/mlruns
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username admin --firstname Admin --lastname Admin --role Admin --email admin@example.com --password admin || true &&
+      (airflow webserver & airflow scheduler)
+      "
 
 volumes:
   postgres_data:

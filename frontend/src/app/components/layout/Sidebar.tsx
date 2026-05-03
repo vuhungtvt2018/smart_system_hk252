@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router";
 import {
   LayoutDashboard, Users, Brain, Activity, FileBarChart2,
   Bell, Settings, ClipboardList, ChevronLeft, ChevronRight,
-  Zap, Shield, Database, GitBranch, BarChart3, AlertTriangle
+  Zap, Shield, Database, GitBranch, BarChart3, AlertTriangle, Play
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { UserRole } from "../../data/mockData";
@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
   { label: "Alerts", path: "/alerts", icon: <Bell size={18} />, roles: ["Admin", "Business User", "ML Engineer"], badge: 3, section: "main" },
   { label: "Prediction", path: "/prediction", icon: <Zap size={18} />, roles: ["Admin", "ML Engineer"], section: "ml" },
   { label: "Model Registry", path: "/models", icon: <GitBranch size={18} />, roles: ["Admin", "ML Engineer"], section: "ml" },
+  { label: "Model Training", path: "/training", icon: <Play size={18} />, roles: ["Admin", "ML Engineer"], section: "ml" },
   { label: "Monitoring", path: "/monitoring", icon: <Activity size={18} />, roles: ["Admin", "ML Engineer"], section: "ml" },
   { label: "User Management", path: "/admin/users", icon: <Shield size={18} />, roles: ["Admin"], section: "admin" },
   { label: "System Config", path: "/admin/config", icon: <Settings size={18} />, roles: ["Admin"], section: "admin" },
