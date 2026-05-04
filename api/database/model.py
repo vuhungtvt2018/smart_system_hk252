@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.orm import declarative_base
 from .session import Base
 
+MLflowBase = declarative_base()
 
 class CustomerPrediction(Base):
     """Stores individual on-demand predictions with all 19 raw features."""
@@ -70,7 +72,7 @@ class SystemConfig(Base):
 
 # MLFlow Entities (Mapped to MLFlow's auto-generated tables)
 
-class MLflowRegisteredModel(Base):
+class MLflowRegisteredModel(MLflowBase):
     __tablename__ = "registered_models"
     __table_args__ = {'extend_existing': True}
 
@@ -79,7 +81,7 @@ class MLflowRegisteredModel(Base):
     last_updated_time = Column(Integer)
     description = Column(String)
 
-class MLflowModelVersion(Base):
+class MLflowModelVersion(MLflowBase):
     __tablename__ = "model_versions"
     __table_args__ = {'extend_existing': True}
 
@@ -95,7 +97,7 @@ class MLflowModelVersion(Base):
     status = Column(String)
     status_message = Column(String)
 
-class MLflowRun(Base):
+class MLflowRun(MLflowBase):
     __tablename__ = "runs"
     __table_args__ = {'extend_existing': True}
 
@@ -114,7 +116,7 @@ class MLflowRun(Base):
     experiment_id = Column(Integer)
     deleted_time = Column(Integer)
 
-class MLflowMetric(Base):
+class MLflowMetric(MLflowBase):
     __tablename__ = "metrics"
     __table_args__ = {'extend_existing': True}
 
@@ -125,7 +127,7 @@ class MLflowMetric(Base):
     step = Column(Integer, primary_key=True)
     is_nan = Column(Boolean, primary_key=True)
 
-class MLflowParam(Base):
+class MLflowParam(MLflowBase):
     __tablename__ = "params"
     __table_args__ = {'extend_existing': True}
 
@@ -133,7 +135,7 @@ class MLflowParam(Base):
     value = Column(String)
     run_uuid = Column(String, primary_key=True)
 
-class MLflowTag(Base):
+class MLflowTag(MLflowBase):
     __tablename__ = "tags"
     __table_args__ = {'extend_existing': True}
 
@@ -141,7 +143,7 @@ class MLflowTag(Base):
     value = Column(String)
     run_uuid = Column(String, primary_key=True)
 
-class MLflowRegisteredModelAlias(Base):
+class MLflowRegisteredModelAlias(MLflowBase):
     __tablename__ = "registered_model_aliases"
     __table_args__ = {'extend_existing': True}
 
@@ -149,7 +151,7 @@ class MLflowRegisteredModelAlias(Base):
     alias = Column(String, primary_key=True)
     version = Column(Integer)
 
-class MLflowRegisteredModelTag(Base):
+class MLflowRegisteredModelTag(MLflowBase):
     __tablename__ = "registered_model_tags"
     __table_args__ = {'extend_existing': True}
 

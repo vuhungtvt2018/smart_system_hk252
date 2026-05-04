@@ -3,7 +3,7 @@ set -e
 
 echo "Starting MLflow background store migration..."
 # MLFLOW_BACKEND_STORE_URI is set in docker-compose.yml
-mlflow db upgrade "$MLFLOW_BACKEND_STORE_URI"
+# mlflow db upgrade "$MLFLOW_BACKEND_STORE_URI" || echo "Database upgrade migration failed or already applied, skipping..."
 
 echo "Starting MLflow server..."
 mlflow server \
