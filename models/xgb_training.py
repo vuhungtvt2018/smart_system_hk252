@@ -10,7 +10,7 @@ import xgboost as xgb
 from itertools import combinations
 from sklearn.metrics import (
     roc_auc_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report
+    confusion_matrix, classification_report, roc_curve, auc, precision_recall_curve, average_precision_score
 )
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import TargetEncoder
@@ -498,6 +498,43 @@ def train_fold_mlflow(fold_idx, dataset_path, tracking_uri, experiment_name):
         mlflow.log_artifact(png_path, artifact_path="feature_importance")
         plt.close(fig)
         if os.path.exists(png_path): os.unlink(png_path)
+
+        # --- ROC CURVE ---
+        fpr, tpr, _ = roc_curve(y_val, oof_preds)
+        roc_auc = auc(fpr, tpr)
+            
+        plt.figure(figsize=(6, 5))
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC (area = {roc_auc:.2f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve - Validation Set')
+        plt.legend(loc="lower right")
+            
+        roc_path = "roc_curve.png"
+        plt.savefig(roc_path)
+        mlflow.log_artifact(roc_path, "evaluation")
+        plt.close()
+
+        # --- PRECISION-RECALL CURVE ---
+        precision, recall, _ = precision_recall_curve(y_val, oof_preds)
+        ap_score = average_precision_score(y_val, oof_preds)
+            
+        plt.figure(figsize=(6, 5))
+        plt.plot(recall, precision, color='green', lw=2, label=f'AP = {ap_score:.2f}')
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title('PR Curve - Validation Set')
+        plt.legend(loc="upper right")
+            
+        pr_path = "pr_curve.png"
+        plt.savefig(pr_path)
+        mlflow.log_artifact(pr_path, "evaluation")
+        plt.close()
+
+        # Dọn dẹp file tạm sau khi log
+        if os.path.exists(roc_path): os.remove(roc_path)
+        if os.path.exists(pr_path): os.remove(pr_path)
 
         # --- JSON (all features, sorted descending) ---
         all_sorted_idx = np.argsort(importances)[::-1]
