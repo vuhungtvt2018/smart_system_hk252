@@ -240,7 +240,7 @@ def _generate_alerts(latest_job, champion_model) -> list:
                 f"Batch inference completed for {job.processed_count} customers. "
                 f"{job.high_count} HIGH, {job.medium_count} MEDIUM, {job.low_count} LOW risk."
             ),
-            "timestamp": job.created_at.strftime("%Y-%m-%d %H:%M") if job.created_at else "Unknown",
+            "timestamp": (job.created_at + timedelta(hours=7)).strftime("%Y-%m-%d %I:%M %p") if job.created_at else "Unknown",
             "read": False,
             "actionRequired": False,
         })
@@ -319,9 +319,11 @@ def get_dashboard_metrics(db: Session) -> dict:
             high_risk  = job.high_count
             medium_risk = job.medium_count
             low_risk   = job.low_count
-            last_batch_run = (
-                job.created_at.strftime("%H:%M %p · %b %d") if job.created_at else "Unknown"
-            )
+            if job.created_at:
+                vn_time = job.created_at + timedelta(hours=7)
+                last_batch_run = vn_time.strftime("%I:%M %p · %b %d")
+            else:
+                last_batch_run = "Unknown"
 
             if total_customers > 0:
                 churn_rate     = round(high_risk / total_customers * 100, 1)
