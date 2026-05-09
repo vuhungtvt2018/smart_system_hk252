@@ -415,7 +415,9 @@ def trigger_batch_inference_dag(job_id: int, dataset_path: str):
     AIRFLOW_PASS = os.getenv("AIRFLOW_PASS", "admin")
     _AUTH_HEADER = "Basic " + base64.b64encode(f"{AIRFLOW_USER}:{AIRFLOW_PASS}".encode()).decode()
     
-    data = {"conf": {"job_id": job_id, "file_path": dataset_path}}
+    filename = os.path.basename(dataset_path)
+    container_path = f"/app/data/uploaded/{filename}"
+    data = {"conf": {"job_id": job_id, "file_path": container_path}}
     req = urllib.request.Request(
         AIRFLOW_URL,
         data=json.dumps(data).encode("utf-8"),

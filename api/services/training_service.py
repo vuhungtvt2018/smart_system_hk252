@@ -37,7 +37,9 @@ class TrainingService:
         """
         Triggers the Airflow DAG 'retrain_pipeline' using the Airflow REST API.
         """
-        data = {"conf": {"dataset_path": dataset_path}}
+        filename = os.path.basename(dataset_path)
+        container_path = f"/app/data/uploaded/{filename}"
+        data = {"conf": {"dataset_path": container_path}}
 
         req = urllib.request.Request(
             AIRFLOW_URL,

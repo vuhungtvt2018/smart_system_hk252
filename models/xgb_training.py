@@ -67,12 +67,25 @@ NUMS = ["tenure", "MonthlyCharges", "TotalCharges"]
 def load_datasets(dataset_path: str) -> tuple:
     from sklearn.model_selection import train_test_split
     
-    orig = pd.read_csv(dataset_path)
+    import io
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if line.startswith('"') and line.endswith('"') and line.count('"') == 2:
+            line = line[1:-1]
+        cleaned_lines.append(line)
+        
+    orig = pd.read_csv(io.StringIO("\n".join(cleaned_lines)))
     
     # Preprocessing to ensure target exists and is formatted
     if CFG.TARGET in orig.columns:
+        orig = orig.dropna(subset=[CFG.TARGET])
         if orig[CFG.TARGET].dtype == object:
-            orig[CFG.TARGET] = orig[CFG.TARGET].map({"No": 0, "Yes": 1}).astype(int)
+            orig[CFG.TARGET] = orig[CFG.TARGET].map({"No": 0, "Yes": 1, "no": 0, "yes": 1, "0": 0, "1": 1}).fillna(-1).astype(int)
+            orig = orig[orig[CFG.TARGET] != -1]
     
     orig["TotalCharges"] = pd.to_numeric(orig["TotalCharges"], errors="coerce")
     orig["TotalCharges"].fillna(orig["TotalCharges"].median(), inplace=True)
