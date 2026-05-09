@@ -224,8 +224,10 @@ export interface DashboardMetrics {
   churnRate: number;
   prevChurnRate: number;
   retentionRate: number;
-  churnTrend: { month: string; highRisk: number; mediumRisk: number; lowRisk: number }[];
+  churnTrend: { month: string; highRisk: number; mediumRisk: number; lowRisk: number; churnRate: number; customers: number }[];
   modelPerformanceTrend: { week: string; auc: number; f1: number; recall: number; precision: number }[];
+  contractDistribution: { name: string; value: number; color: string }[];
+  retentionData: { month: string; contacted: number; retained: number; retentionRate: number }[];
 }
 
 export const DashboardService = {
@@ -236,4 +238,40 @@ export const DashboardService = {
     return fetchClient<Alert[]>("/dashboard/alerts");
   },
 };
+
+// ==========================================
+// Admin API Services
+// ==========================================
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: "Active" | "Inactive" | "Locked";
+  lastLogin: string;
+  createdAt: string;
+  avatar: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  user: string;
+  role: string;
+  action: string;
+  detail: string;
+  ip: string;
+  status: "SUCCESS" | "FAILED" | "WARNING";
+}
+
+export const AdminService = {
+  getUsers: () => {
+    return fetchClient<User[]>("/admin/users");
+  },
+  getAuditLogs: () => {
+    return fetchClient<AuditEntry[]>("/admin/audit-logs");
+  },
+};
+
 

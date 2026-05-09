@@ -85,6 +85,8 @@ def _build_churn_trend(db: Session) -> list:
                 "highRisk":   round(pt["highRisk"]   / total * 100, 1),
                 "mediumRisk": round(pt["mediumRisk"] / total * 100, 1),
                 "lowRisk":    round(pt["lowRisk"]    / total * 100, 1),
+                "churnRate":  round(pt["highRisk"]   / total * 100, 1),
+                "customers":  total,
             })
         else:
             # Synthetic: vary by ±3 percentage points around anchor
@@ -99,6 +101,8 @@ def _build_churn_trend(db: Session) -> list:
                 "highRisk":   round(h, 1),
                 "mediumRisk": round(m, 1),
                 "lowRisk":    round(lo, 1),
+                "churnRate":  round(h, 1),
+                "customers":  int(anchor_total + rng.uniform(-50, 50)),
             })
 
     return result
@@ -310,6 +314,7 @@ def get_dashboard_metrics(db: Session) -> dict:
     churn_rate = 0.0
     prev_churn_rate = 0.0
     retention_rate = 100.0
+    contract_distribution: list = []
 
     if latest_jobs:
         # Latest job
@@ -343,6 +348,19 @@ def get_dashboard_metrics(db: Session) -> dict:
                     "contract":        r.get("contract", "Unknown"),
                     "churnProbability": r.get("churn_probability", 0),
                     "riskTier":        r.get("risk_tier", "HIGH"),
+                })
+            
+            contract_counts = {}
+            for r in results:
+                c = r.get("contract", "Unknown")
+                contract_counts[c] = contract_counts.get(c, 0) + 1
+            
+            colors = {"Month-to-month": "#ef4444", "One year": "#f59e0b", "Two year": "#10b981"}
+            for name, count in contract_counts.items():
+                contract_distribution.append({
+                    "name": name,
+                    "value": round((count / total_customers) * 100, 1) if total_customers > 0 else 0,
+                    "color": colors.get(name, "#64748b")
                 })
 
         # Previous job → for trend
@@ -388,6 +406,19 @@ def get_dashboard_metrics(db: Session) -> dict:
     churn_trend           = _build_churn_trend(db)
     model_performance_trend = _build_model_performance_trend()
 
+    retention_data = []
+    for ct in churn_trend:
+        # Simulate retention effectiveness based on churnRate
+        contacted = int(ct["customers"] * 0.18)
+        retained = int(contacted * (1 - (ct["churnRate"] / 100)) * 0.85) # Simulating a 85% success on non-churning contacted
+        retention_rate = round((retained / contacted) * 100, 1) if contacted > 0 else 0.0
+        retention_data.append({
+            "month": ct["month"].split(" ")[0],  # just 'Jan' instead of 'Jan '26' for bar chart
+            "contacted": contacted,
+            "retained": retained,
+            "retentionRate": retention_rate
+        })
+
     # ── 4. Alerts ──────────────────────────────────────────────────────────────
     latest_job_obj = latest_jobs[0] if latest_jobs else None
     recent_alerts  = _generate_alerts(latest_job_obj, champion_model)
@@ -410,4 +441,6 @@ def get_dashboard_metrics(db: Session) -> dict:
         "retentionRate":        retention_rate,
         "churnTrend":           churn_trend,
         "modelPerformanceTrend": model_performance_trend,
+        "contractDistribution": contract_distribution,
+        "retentionData":        retention_data,
     }

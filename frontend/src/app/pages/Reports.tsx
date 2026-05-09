@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell
 } from "recharts";
 import { Download, TrendingUp, TrendingDown, Calendar } from "lucide-react";
-import { churnTrendData, retentionData, contractDistribution, riskDistributionData } from "../data/mockData";
+import { DashboardService, DashboardMetrics } from "../services/api";
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -24,6 +24,21 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function Reports() {
   const [dateRange, setDateRange] = useState("6m");
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+
+  useEffect(() => {
+    DashboardService.getMetrics().then((data) => setMetrics(data)).catch(console.error);
+  }, []);
+
+  if (!metrics) {
+    return <div className="p-8 text-center text-slate-500">Loading Report Data...</div>;
+  }
+
+  const latestRetention = metrics.retentionData && metrics.retentionData.length > 0 
+    ? metrics.retentionData[metrics.retentionData.length - 1] 
+    : { contacted: 0, retained: 0 };
+  
+  const retentionDelta = metrics.retentionRate - (100 - metrics.prevChurnRate);
 
   return (
     <div className="space-y-6">
@@ -55,10 +70,10 @@ export function Reports() {
       {/* KPI Summary */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Avg Churn Rate", value: "25.8%", delta: "-1.7%", down: true, color: "#6366f1" },
-          { label: "Total HIGH Risk", value: "172", delta: "+24 today", down: false, color: "#ef4444" },
-          { label: "Retention Success", value: "65.5%", delta: "+2.6%", down: true, color: "#10b981" },
-          { label: "Customers Retained", value: "108", delta: "of 165 contacted", down: true, color: "#f59e0b" },
+          { label: "Avg Churn Rate", value: `${metrics.churnRate}%`, delta: `${(metrics.churnRate - metrics.prevChurnRate).toFixed(1)}% vs prev`, down: metrics.churnRate <= metrics.prevChurnRate, color: "#6366f1" },
+          { label: "Total HIGH Risk", value: metrics.highRisk.toLocaleString(), delta: "In latest batch", down: false, color: "#ef4444" },
+          { label: "Retention Success", value: `${metrics.retentionRate}%`, delta: `${retentionDelta > 0 ? '+' : ''}${retentionDelta.toFixed(1)}% vs prev`, down: retentionDelta >= 0, color: "#10b981" },
+          { label: "Customers Retained", value: latestRetention.retained.toLocaleString(), delta: `of ${latestRetention.contacted} contacted`, down: true, color: "#f59e0b" },
         ].map((k) => (
           <div key={k.label} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: k.color }}>{k.value}</div>
@@ -77,7 +92,7 @@ export function Reports() {
         <div className="col-span-12 lg:col-span-8 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Monthly Churn Rate (%)</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={churnTrendData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+            <AreaChart data={metrics.churnTrend} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="cgChurn" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -98,8 +113,8 @@ export function Reports() {
           <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Contract Distribution</h3>
           <ResponsiveContainer width="100%" height={140}>
             <PieChart>
-              <Pie data={contractDistribution} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value">
-                {contractDistribution.map((entry, index) => (
+              <Pie data={metrics.contractDistribution} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value">
+                {metrics.contractDistribution.map((entry, index) => (
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
@@ -107,7 +122,7 @@ export function Reports() {
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-1.5 mt-2">
-            {contractDistribution.map((d) => (
+            {metrics.contractDistribution.map((d) => (
               <div key={d.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-sm" style={{ background: d.color }} />
@@ -126,7 +141,7 @@ export function Reports() {
         <div className="col-span-12 lg:col-span-7 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Retention Effectiveness</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={retentionData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+            <BarChart data={metrics.retentionData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -142,7 +157,7 @@ export function Reports() {
         <div className="col-span-12 lg:col-span-5 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Retention Rate Trend (%)</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={retentionData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+            <LineChart data={metrics.retentionData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis domain={[50, 75]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -167,8 +182,8 @@ export function Reports() {
             </tr>
           </thead>
           <tbody>
-            {churnTrendData.map((row, i) => {
-              const prev = churnTrendData[i - 1];
+            {metrics.churnTrend.map((row, i) => {
+              const prev = metrics.churnTrend[i - 1];
               const delta = prev ? row.churnRate - prev.churnRate : null;
               return (
                 <tr key={row.month} className="border-b" style={{ borderColor: "#f8fafc" }}>

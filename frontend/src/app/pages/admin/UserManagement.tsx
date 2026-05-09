@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, Search, Edit2, Trash2, Lock, Unlock, Key, Shield, CheckCircle, XCircle } from "lucide-react";
-import { users, User, UserRole } from "../../data/mockData";
+import { AdminService, User } from "../../services/api";
+
+type UserRole = "Admin" | "Business User" | "ML Engineer" | string;
 
 const roleConfig: Record<UserRole, { color: string; bg: string }> = {
   Admin: { color: "#6366f1", bg: "#eff0fe" },
@@ -18,8 +20,18 @@ export function UserManagement() {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState<UserRole | "All">("All");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [localUsers, setLocalUsers] = useState(users);
+  const [localUsers, setLocalUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Business User" as UserRole });
+
+  useEffect(() => {
+    AdminService.getUsers()
+      .then(data => {
+        setLocalUsers(data);
+        setLoading(false);
+      })
+      .catch(console.error);
+  }, []);
 
   const filtered = localUsers.filter((u) => {
     const matchSearch = search === "" || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
@@ -50,6 +62,10 @@ export function UserManagement() {
     setShowAddModal(false);
     setNewUser({ name: "", email: "", role: "Business User" });
   };
+
+  if (loading) {
+    return <div className="p-8 text-center text-slate-500">Loading Users...</div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -116,8 +132,8 @@ export function UserManagement() {
           </thead>
           <tbody>
             {filtered.map((u) => {
-              const rc = roleConfig[u.role];
-              const sc = statusConfig[u.status];
+              const rc = roleConfig[u.role as UserRole] || { color: "#64748b", bg: "#f1f5f9" };
+              const sc = statusConfig[u.status as keyof typeof statusConfig] || statusConfig.Active;
               return (
                 <tr key={u.id} className="border-b" style={{ borderColor: "#f8fafc" }}>
                   <td className="px-5 py-3.5">
