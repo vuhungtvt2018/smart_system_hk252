@@ -125,7 +125,7 @@ def _build_model_performance_trend() -> list:
         # Get all versions to find the experiment
         versions = client.search_model_versions(f"name='{REGISTERED_MODEL_NAME}'")
         if not versions:
-            return _synthetic_model_perf()
+            return []
 
         # Collect unique run IDs from model versions
         run_ids = list({v.run_id for v in versions if v.run_id})
@@ -136,10 +136,10 @@ def _build_model_performance_trend() -> list:
             try:
                 run = client.get_run(run_id)
                 metrics = run.data.metrics
-                auc  = metrics.get("auc",  metrics.get("roc_auc", None))
-                f1   = metrics.get("f1",   metrics.get("f1_score", None))
-                recall    = metrics.get("recall",    None)
-                precision = metrics.get("precision", None)
+                auc  = metrics.get("val_auc",  metrics.get("roc_auc", None))
+                f1   = metrics.get("val_f1",   metrics.get("f1_score", None))
+                recall    = metrics.get("val_recall",    None)
+                precision = metrics.get("val_precision", None)
                 if auc is None:
                     continue
                 runs_data.append({
@@ -154,7 +154,7 @@ def _build_model_performance_trend() -> list:
                 continue
 
         if not runs_data:
-            return _synthetic_model_perf()
+            return []
 
         # Sort by start_time ascending, take last 8
         runs_data.sort(key=lambda x: x["start_time"])
@@ -168,18 +168,13 @@ def _build_model_performance_trend() -> list:
                 "auc":       run["auc"],
                 "f1":        run["f1"]  if run["f1"]  is not None else round(run["auc"] * 0.905, 3),
                 "recall":    run["recall"]    if run["recall"]    is not None else round(run["auc"] * 0.942, 3),
-                "precision": run["precision"] if run["precision"] is not None else round(run["auc"] * 0.871, 3),
-            })
-
-        # If < 8 real runs, prepend synthetic weeks
-        if len(result) < 8:
-            result = _fill_synthetic_weeks(result, target=8)
-
+                "precision": run["precision"] if run["precision"] is not None else round(run["auc"] * 0.871, 3),})
+        # Do not fill synthetic weeks, return exactly what we have from MLflow
         return result
 
     except Exception as e:
         logger.warning(f"MLflow run history fetch failed: {e}")
-        return _synthetic_model_perf()
+        return []
 
 
 def _synthetic_model_perf(base_auc: float = 0.875) -> list:

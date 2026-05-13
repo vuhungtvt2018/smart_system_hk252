@@ -274,4 +274,37 @@ export const AdminService = {
   },
 };
 
+// ==========================================
+// Monitoring API Services
+// ==========================================
 
+export interface PsiFeature {
+  feature: string;
+  psi: number;
+  status: "OK" | "WARNING" | "CRITICAL";
+}
+
+export interface PsiTrend {
+  date: string;
+  psi: number;
+}
+
+export interface ModelPerformanceTrend {
+  week: string;
+  auc: number;
+  f1: number;
+  recall: number;
+  precision: number;
+}
+
+export interface MonitoringMetrics {
+  psiData: PsiFeature[];
+  psiTrendData: PsiTrend[];
+  modelPerformanceData: ModelPerformanceTrend[];
+}
+
+export const MonitoringService = {
+  getMetrics: () => {
+    return fetchClient<MonitoringMetrics>("/monitoring/metrics");
+  },
+};

@@ -80,6 +80,12 @@ export function Training() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "success" | "error">("idle");
 
+  // --- Test Upload state ---
+  const [testFile, setTestFile] = useState<File | null>(null);
+  const [testDatasetExists, setTestDatasetExists] = useState(false);
+  const [testUploading, setTestUploading] = useState(false);
+  const [testUploadStatus, setTestUploadStatus] = useState<"idle" | "success" | "error">("idle");
+
   // --- Trigger state ---
   const [triggering, setTriggering] = useState(false);
   const [triggerStatus, setTriggerStatus] = useState<"idle" | "success" | "error">("idle");
@@ -112,11 +118,25 @@ export function Training() {
     }
   }, []);
 
+  // ── Test Dataset status ────────────────────────────────────────────────────
+  const fetchTestDatasetStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/test-dataset`);
+      if (res.ok) {
+        const data = await res.json();
+        setTestDatasetExists(data.exists);
+      }
+    } catch (err) {
+      console.error("Failed to fetch test dataset status", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDagStatus(true);
+    fetchTestDatasetStatus();
     pollingRef.current = setInterval(() => fetchDagStatus(false), POLL_INTERVAL_MS);
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [fetchDagStatus]);
+  }, [fetchDagStatus, fetchTestDatasetStatus]);
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -147,6 +167,33 @@ export function Training() {
     }
   };
 
+  const handleTestFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setTestFile(e.target.files[0]);
+      setTestUploadStatus("idle");
+      setTriggerStatus("idle");
+    }
+  };
+
+  const handleTestUpload = async () => {
+    if (!testFile) return;
+    setTestUploading(true);
+    setTestUploadStatus("idle");
+    const formData = new FormData();
+    formData.append("file", testFile);
+    try {
+      const res = await fetch(`${API_BASE}/upload-test`, { method: "POST", body: formData });
+      if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+      setTestDatasetExists(true);
+      setTestUploadStatus("success");
+    } catch (err: any) {
+      setTestUploadStatus("error");
+      setErrorMessage(err.message ?? "Unknown upload error");
+    } finally {
+      setTestUploading(false);
+    }
+  };
+
   // ── Trigger ───────────────────────────────────────────────────────────────
   const handleTrigger = async () => {
     if (!datasetPath) return;
@@ -173,7 +220,7 @@ export function Training() {
   // ── Derived values ────────────────────────────────────────────────────────
   const runningCount = dagData?.running_count ?? 0;
   const isAtCapacity = runningCount >= MAX_CONCURRENT;
-  const canTrigger   = !!datasetPath && !triggering && !isAtCapacity;
+  const canTrigger   = !!datasetPath && testDatasetExists && !triggering && !isAtCapacity;
 
   const statusCounts = {
     running: dagData?.runs.filter(r => r.state === "running").length ?? 0,
@@ -238,13 +285,63 @@ export function Training() {
         )}
       </div>
 
-      {/* ② Pipeline Status */}
+      {/* ② Test Upload */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-slate-700 flex items-center gap-2">
+            <UploadCloud size={18} className="text-pink-500" />
+            2. Upload Test Dataset (Required)
+          </h2>
+          {testDatasetExists && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold text-xs bg-green-50 text-green-700 border border-green-200">
+              <CheckCircle size={12} /> Test Dataset Available
+            </span>
+          )}
+        </div>
+
+        <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50">
+          <input type="file" accept=".csv" onChange={handleTestFileChange}
+            className="hidden" id="test-file-upload" />
+          <label htmlFor="test-file-upload"
+            className="cursor-pointer flex flex-col items-center justify-center space-y-3">
+            <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center border border-slate-100 text-pink-500">
+              <FileText size={24} />
+            </div>
+            <div className="text-slate-600 font-medium">
+              {testFile ? testFile.name : (testDatasetExists ? "Click to upload a new test dataset (overwrite)" : "Click to select a CSV test dataset")}
+            </div>
+            <div className="text-slate-400 text-sm">Supports .csv files only</div>
+          </label>
+        </div>
+
+        {testFile && (
+          <div className="mt-4 flex justify-end">
+            <button onClick={handleTestUpload} disabled={testUploading}
+              className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-400 text-white rounded-xl font-medium transition-colors flex items-center gap-2 text-sm">
+              {testUploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : "Upload Test Dataset"}
+            </button>
+          </div>
+        )}
+
+        {testUploadStatus === "success" && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center gap-2 text-sm font-medium">
+            <CheckCircle size={15} /> Test dataset uploaded to server successfully!
+          </div>
+        )}
+        {testUploadStatus === "error" && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2 text-sm font-medium">
+            <AlertCircle size={15} /> {errorMessage}
+          </div>
+        )}
+      </div>
+
+      {/* ③ Pipeline Status */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-700 flex items-center gap-2">
             <Activity size={18} className="text-indigo-500" />
-            2. Airflow Pipeline Status
+            3. Airflow Pipeline Status
           </h2>
           <div className="flex items-center gap-3">
             {/* Capacity indicator */}
@@ -363,11 +460,11 @@ export function Training() {
         </div>
       </div>
 
-      {/* ③ Trigger */}
+      {/* ④ Trigger */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h2 className="text-base font-semibold text-slate-700 mb-2 flex items-center gap-2">
           <Play size={18} className="text-emerald-500" />
-          3. Trigger Training Pipeline
+          4. Trigger Training Pipeline
         </h2>
 
         <p className="text-slate-400 text-sm mb-5">
@@ -405,7 +502,10 @@ export function Training() {
         </button>
 
         {!datasetPath && !triggering && (
-          <p className="mt-2 text-center text-xs text-slate-400">Upload a dataset first to enable this button.</p>
+          <p className="mt-2 text-center text-xs text-slate-400">Upload a training dataset first.</p>
+        )}
+        {datasetPath && !testDatasetExists && !triggering && (
+          <p className="mt-2 text-center text-xs text-slate-400">A test dataset is required. Please upload one above.</p>
         )}
 
         {triggerStatus === "success" && (
