@@ -93,3 +93,6 @@ Cấu hình hệ thống thông qua các biến môi trường trong tệp `.env
 **Lưu ý**: Hệ thống này là một phần của đồ án môn học và được cung cấp như một ví dụ minh họa về cách tích hợp các công nghệ AI để xây dựng các ứng dụng thông minh.
 
 Youtube: https://youtu.be/bJ9mM-gv4jk
+Contact: 
+- dvhung.sdh241@hcmut.edu.vn
+- hblong.sdh242@hcmut.edu.vn
