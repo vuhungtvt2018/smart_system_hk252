@@ -7,7 +7,7 @@ import {
   AlertTriangle, CheckCircle, TrendingUp, Activity, Clock,
   Loader2, BarChart2, RefreshCw,
 } from "lucide-react";
-import { psiData, psiTrendData, modelPerformanceData } from "../data/mockData";
+import { MonitoringService, PsiFeature, PsiTrend, ModelPerformanceTrend } from "../services/api";
 
 const API_BASE = "http://localhost:8000/api/v1";
 
@@ -235,6 +235,24 @@ function FeatureImportancePanel({ models }: { models: ModelMeta[] }) {
 export function Monitoring() {
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const [registryModels, setRegistryModels] = useState<ModelMeta[]>([]);
+  
+  const [psiData, setPsiData] = useState<PsiFeature[]>([]);
+  const [psiTrendData, setPsiTrendData] = useState<PsiTrend[]>([]);
+  const [modelPerformanceData, setModelPerformanceData] = useState<ModelPerformanceTrend[]>([]);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+
+  // Fetch metrics
+  useEffect(() => {
+    MonitoringService.getMetrics().then(data => {
+      setPsiData(data.psiData);
+      setPsiTrendData(data.psiTrendData);
+      setModelPerformanceData(data.modelPerformanceData);
+      setLoadingMetrics(false);
+    }).catch(err => {
+      console.error(err);
+      setLoadingMetrics(false);
+    });
+  }, []);
 
   // Fetch model list for feature importance panel
   useEffect(() => {
@@ -244,8 +262,18 @@ export function Monitoring() {
       .catch(() => {}); // silently ignore – feature importance is optional
   }, []);
 
-  const overallStatus = psiData.some(d => d.status === "CRITICAL") ? "CRITICAL"
+  const overallStatus = psiData.length === 0 ? "UNKNOWN" 
+    : psiData.some(d => d.status === "CRITICAL") ? "CRITICAL"
     : psiData.some(d => d.status === "WARNING") ? "WARNING" : "HEALTHY";
+
+  if (loadingMetrics) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
+        <Loader2 size={24} className="animate-spin text-indigo-500" />
+        <p>Loading monitoring metrics...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -259,33 +287,37 @@ export function Monitoring() {
           ? <AlertTriangle size={20} color="#ef4444" />
           : overallStatus === "WARNING"
           ? <AlertTriangle size={20} color="#f59e0b" />
+          : overallStatus === "UNKNOWN"
+          ? <Activity size={20} color="#94a3b8" />
           : <CheckCircle size={20} color="#10b981" />}
         <div className="flex-1">
           <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>
             System Status:{" "}
-            <span style={{ color: overallStatus === "CRITICAL" ? "#dc2626" : overallStatus === "WARNING" ? "#d97706" : "#16a34a" }}>
+            <span style={{ color: overallStatus === "CRITICAL" ? "#dc2626" : overallStatus === "WARNING" ? "#d97706" : overallStatus === "UNKNOWN" ? "#64748b" : "#16a34a" }}>
               {overallStatus}
             </span>
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
             {overallStatus === "CRITICAL"
-              ? "Critical drift on 'internetService' (PSI=0.21). Auto-retrain triggered."
+              ? "Critical drift detected. Auto-retrain recommended."
               : overallStatus === "WARNING"
-              ? "Warning level drift on 'numServices'. Monitor closely."
+              ? "Warning level drift on some features. Monitor closely."
+              : overallStatus === "UNKNOWN"
+              ? "No drift data available. Awaiting batch predictions."
               : "All features within acceptable drift limits."}
           </div>
         </div>
         <div className="flex items-center gap-2" style={{ color: "#94a3b8", fontSize: 12 }}>
-          <Clock size={13} /> <span>Last check: 2026-03-30 07:45</span>
+          <Clock size={13} /> <span>Live monitoring</span>
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Overall PSI",       value: "0.21", sub: "Max across features",    icon: <Activity size={18} />,      color: "#ef4444" },
-          { label: "Features Monitored",value: "8",    sub: `${psiData.filter(d => d.status === "OK").length} OK, ${psiData.filter(d => d.status !== "OK").length} Issues`, icon: <TrendingUp size={18} />, color: "#6366f1" },
-          { label: "Model AUC (Live)",  value: "0.881", sub: "Production champion",   icon: <CheckCircle size={18} />,   color: "#10b981" },
+          { label: "Overall PSI",       value: psiData.length > 0 ? Math.max(...psiData.map(d => d.psi)).toFixed(2) : "—", sub: "Max across features",    icon: <Activity size={18} />,      color: overallStatus === "CRITICAL" ? "#ef4444" : overallStatus === "WARNING" ? "#f59e0b" : "#10b981" },
+          { label: "Features Monitored",value: psiData.length > 0 ? psiData.length : "0",    sub: `${psiData.filter(d => d.status === "OK").length} OK, ${psiData.filter(d => d.status !== "OK").length} Issues`, icon: <TrendingUp size={18} />, color: "#6366f1" },
+          { label: "Model AUC (Live)",  value: modelPerformanceData.length > 0 ? modelPerformanceData[modelPerformanceData.length - 1].auc.toFixed(3) : "—", sub: "Production champion",   icon: <CheckCircle size={18} />,   color: "#10b981" },
           { label: "PSI Threshold",     value: "0.20", sub: "Retrain trigger level",   icon: <AlertTriangle size={18} />, color: "#f59e0b" },
         ].map(k => (
           <div key={k.label} className="rounded-2xl p-4 flex items-center gap-4"
@@ -304,6 +336,16 @@ export function Monitoring() {
       </div>
 
       {/* PSI Chart + Table */}
+      {psiData.length === 0 ? (
+        <div className="py-12 rounded-2xl border border-slate-100 text-center" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <AlertTriangle size={32} className="mx-auto mb-3 text-amber-400" />
+          <h3 className="text-slate-700 font-bold text-lg mb-1">No Drift Data Available</h3>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">
+            Feature drift (PSI) is calculated by comparing inference data against the baseline test dataset. 
+            Run a batch prediction to see drift analytics.
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-12 gap-4">
         {/* PSI by Feature */}
         <div className="col-span-12 lg:col-span-7 rounded-2xl p-5"
@@ -362,15 +404,23 @@ export function Monitoring() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Feature Importance – LIVE from MLflow */}
       <FeatureImportancePanel models={registryModels} />
 
       {/* PSI Trend + Model Performance */}
       <div className="grid grid-cols-12 gap-4">
+        {psiData.length === 0 ? (
+          <div className="col-span-12 lg:col-span-5 rounded-2xl p-5 flex flex-col items-center justify-center text-center text-slate-400"
+            style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9", minHeight: 250 }}>
+            <Activity size={24} className="mb-2 text-slate-300" />
+            <span className="text-sm">Awaiting batch predictions<br/>to build PSI trend.</span>
+          </div>
+        ) : (
         <div className="col-span-12 lg:col-span-5 rounded-2xl p-5"
           style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Overall PSI Trend (March)</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Overall PSI Trend</h3>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={psiTrendData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -384,10 +434,17 @@ export function Monitoring() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        )}
 
         <div className="col-span-12 lg:col-span-7 rounded-2xl p-5"
           style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>Model Performance Over Time</h3>
+          {modelPerformanceData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center text-slate-400" style={{ height: 200 }}>
+              <Activity size={24} className="mb-2 text-slate-300" />
+              <span className="text-sm">No training history found in MLflow.<br/>Train a model to see performance trends.</span>
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={modelPerformanceData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -402,6 +459,7 @@ export function Monitoring() {
               <Line type="monotone" dataKey="recall" name="Recall" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>

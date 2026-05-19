@@ -405,30 +405,106 @@ def validate_batch_columns(df: pd.DataFrame) -> list:
     return sorted(REQUIRED_COLUMNS - set(df.columns))
 
 
+def trigger_batch_inference_dag(job_id: int, dataset_path: str):
+    import urllib.request
+    import json
+    import base64
+    AIRFLOW_BASE_URL = os.getenv("AIRFLOW_BASE_URL", "http://host.docker.internal:8080/api/v1")
+    AIRFLOW_URL = f"{AIRFLOW_BASE_URL}/dags/batch_inference_pipeline/dagRuns"
+    AIRFLOW_USER = os.getenv("AIRFLOW_USER", "admin")
+    AIRFLOW_PASS = os.getenv("AIRFLOW_PASS", "admin")
+    _AUTH_HEADER = "Basic " + base64.b64encode(f"{AIRFLOW_USER}:{AIRFLOW_PASS}".encode()).decode()
+    
+    filename = os.path.basename(dataset_path)
+    container_path = f"/app/data/uploaded/{filename}"
+    data = {"conf": {"job_id": job_id, "file_path": container_path}}
+    req = urllib.request.Request(
+        AIRFLOW_URL,
+        data=json.dumps(data).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": _AUTH_HEADER,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode())
+    except Exception as e:
+        logger.error(f"Failed to trigger Airflow batch inference DAG: {e}")
+        raise
+
+
 def create_batch_prediction(db: Session, file_content: bytes, filename: str):
     """
-    Parse CSV, validate columns, run batch inference, and persist results.
-    Returns BatchPredictionResponse.
+    Save CSV, create a queued batch job in DB, and trigger Airflow pipeline.
     """
-    # Create job record immediately
     job = crud.create_batch_job(db=db, filename=filename)
 
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "uploaded")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    
+    file_path = os.path.join(DATA_DIR, f"batch_{job.id}_{filename}")
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+
+    crud.update_batch_job(
+        db=db,
+        job_id=job.id,
+        processed_count=0,
+        high_count=0,
+        medium_count=0,
+        low_count=0,
+        status="processing"
+    )
+
     try:
-        df = pd.read_csv(io.BytesIO(file_content))
+        trigger_batch_inference_dag(job.id, file_path)
+    except Exception as e:
+        crud.update_batch_job(
+            db, job.id, 0, 0, 0, 0, "error", error_message=f"Airflow trigger failed: {e}"
+        )
+        raise ValueError(f"Failed to trigger Airflow DAG: {e}")
+
+    return job
+
+
+def execute_batch_inference(db: Session, job_id: int, file_path: str):
+    """
+    Read CSV from file_path, run inference, update DB job.
+    Called by Airflow worker.
+    """
+    job = crud.get_batch_job(db, job_id)
+    if not job:
+        logger.error(f"Batch job {job_id} not found.")
+        return
+
+    try:
+        import io
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        # Strip surrounding quotes if present (e.g. "a,b,c"\n)
+        cleaned_lines = []
+        for line in lines:
+            line = line.strip()
+            if line.startswith('"') and line.endswith('"') and line.count('"') == 2:
+                line = line[1:-1]
+            cleaned_lines.append(line)
+        
+        df = pd.read_csv(io.StringIO("\n".join(cleaned_lines)))
     except Exception as e:
         crud.update_batch_job(
             db, job.id, 0, 0, 0, 0, "error", error_message=f"CSV parse error: {e}"
         )
         raise ValueError(f"Cannot parse CSV: {e}")
 
-    # Column validation
     missing = validate_batch_columns(df)
     if missing:
         msg = f"Missing required columns: {', '.join(missing)}"
         crud.update_batch_job(db, job.id, 0, 0, 0, 0, "error", error_message=msg)
         raise ValueError(msg)
 
-    # Detect customer identifier column
     id_col = None
     for col in OPTIONAL_ID_COLUMNS:
         if col in df.columns:
@@ -440,10 +516,8 @@ def create_batch_prediction(db: Session, file_content: bytes, filename: str):
         crud.update_batch_job(db, job.id, 0, 0, 0, 0, "error", error_message=msg)
         raise ValueError(msg)
 
-    # Preprocess TotalCharges
     df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce").fillna(0.0)
 
-    # Load model once
     model_loaded = _load_model_and_bundle()
 
     results = []
@@ -499,9 +573,27 @@ def create_batch_prediction(db: Session, file_content: bytes, filename: str):
             "customer_id": cust_id,
             "churn_probability": round(prob, 4),
             "risk_tier": tier,
+            "gender": row.get("gender", "Unknown"),
+            "senior_citizen": int(row.get("SeniorCitizen", 0)),
+            "tenure": int(row.get("tenure", 0)),
+            "contract": row.get("Contract", "Month-to-month"),
+            "internet_service": row.get("InternetService", "Unknown"),
+            "monthly_charges": float(row.get("MonthlyCharges", 0.0)),
+            "total_charges": float(row.get("TotalCharges", 0.0)),
+            "payment_method": row.get("PaymentMethod", "Unknown"),
+            "partner": row.get("Partner", "No"),
+            "dependents": row.get("Dependents", "No"),
+            "phone_service": row.get("PhoneService", "No"),
+            "multiple_lines": row.get("MultipleLines", "No"),
+            "online_security": row.get("OnlineSecurity", "No"),
+            "online_backup": row.get("OnlineBackup", "No"),
+            "device_protection": row.get("DeviceProtection", "No"),
+            "tech_support": row.get("TechSupport", "No"),
+            "streaming_tv": row.get("StreamingTV", "No"),
+            "streaming_movies": row.get("StreamingMovies", "No"),
+            "paperless_billing": row.get("PaperlessBilling", "No"),
         })
 
-    # Persist job with results
     job = crud.update_batch_job(
         db=db,
         job_id=job.id,
@@ -514,6 +606,7 @@ def create_batch_prediction(db: Session, file_content: bytes, filename: str):
     )
 
     return job
+
 
 
 def get_batch_jobs(db: Session, skip: int = 0, limit: int = 50):

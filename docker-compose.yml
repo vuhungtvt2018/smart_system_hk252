@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retainai_password}
       POSTGRES_DB: ${POSTGRES_DB:-retainai_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -94,16 +94,21 @@ services:
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
       - AIRFLOW_WWW_USER_USERNAME=admin
       - AIRFLOW_WWW_USER_PASSWORD=admin
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-retainai_user}:${POSTGRES_PASSWORD:-retainai_password}@db:5432/${POSTGRES_DB:-retainai_db}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./data:/app/data
       - ./models:/app/models
+      - ./api:/app/api
       - ${MLRUNS_PATH:-./mlruns}:/mlruns
     command: >
       bash -c "
+      rm -f /opt/airflow/airflow-webserver.pid &&
       airflow db init &&
       airflow users create --username admin --firstname Admin --lastname Admin --role Admin --email admin@example.com --password admin || true &&
-      (airflow webserver & airflow scheduler)
+      airflow webserver &
+      sleep 10 &&
+      airflow scheduler
       "
 
 volumes:

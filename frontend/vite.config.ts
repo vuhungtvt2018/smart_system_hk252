@@ -22,9 +22,23 @@ export default defineConfig({
   server: {
     watch: {
       usePolling: true,
+      interval: 1000, // Increase interval to reduce CPU/IO load in Docker
+      ignored: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/.git/**',
+        '**/.vite/**',
+      ],
+    },
+    hmr: {
+      overlay: true, // Show errors in browser
     },
     host: true, // needed for the Docker Container port mapping to work
     strictPort: true,
     port: 5173, 
+  },
+  optimizeDeps: {
+    // Force pre-bundling of problematic UI libraries to improve HMR
+    include: ['lucide-react', 'recharts', 'clsx', 'tailwind-merge'],
   }
 })

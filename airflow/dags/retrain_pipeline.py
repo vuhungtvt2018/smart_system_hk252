@@ -34,6 +34,7 @@ with DAG(
             "python /app/models/xgb_training.py "
             "--fold 0 "
             "--dataset_path {{ dag_run.conf['dataset_path'] }} "
+            "{% if dag_run.conf.get('test_dataset_path') %}--test_dataset_path {{ dag_run.conf['test_dataset_path'] }} {% endif %}"
             "--tracking_uri http://mlflow:5000 "
             "--experiment_name XGBoost_Churn_Pipeline"
         )

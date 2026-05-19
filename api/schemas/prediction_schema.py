@@ -57,6 +57,27 @@ class BatchPredictionResultItem(BaseModel):
     customer_id: Optional[str]
     churn_probability: float
     risk_tier: str
+    
+    # Extra fields for display
+    gender: Optional[str] = None
+    senior_citizen: Optional[int] = None
+    tenure: Optional[int] = None
+    contract: Optional[str] = None
+    internet_service: Optional[str] = None
+    monthly_charges: Optional[float] = None
+    total_charges: Optional[float] = None
+    payment_method: Optional[str] = None
+    partner: Optional[str] = None
+    dependents: Optional[str] = None
+    phone_service: Optional[str] = None
+    multiple_lines: Optional[str] = None
+    online_security: Optional[str] = None
+    online_backup: Optional[str] = None
+    device_protection: Optional[str] = None
+    tech_support: Optional[str] = None
+    streaming_tv: Optional[str] = None
+    streaming_movies: Optional[str] = None
+    paperless_billing: Optional[str] = None
 
 
 class BatchPredictionResponse(BaseModel):

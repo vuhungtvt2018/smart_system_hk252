@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Download, Filter, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
-import { auditLog, AuditEntry, UserRole } from "../../data/mockData";
+import { AdminService, AuditEntry } from "../../services/api";
+
+type UserRole = "Admin" | "Business User" | "ML Engineer" | string;
 
 const statusConfig = {
   SUCCESS: { bg: "#dcfce7", color: "#16a34a", icon: <CheckCircle size={12} /> },
@@ -31,23 +33,38 @@ export function AuditLog() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"ALL" | AuditEntry["status"]>("ALL");
   const [filterRole, setFilterRole] = useState<"ALL" | UserRole>("ALL");
+  const [localLogs, setLocalLogs] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = auditLog.filter((entry) => {
+  useEffect(() => {
+    AdminService.getAuditLogs()
+      .then(data => {
+        setLocalLogs(data);
+        setLoading(false);
+      })
+      .catch(console.error);
+  }, []);
+
+  const filtered = localLogs.filter((entry) => {
     const matchSearch = search === "" || entry.user.toLowerCase().includes(search.toLowerCase()) || entry.action.toLowerCase().includes(search.toLowerCase()) || entry.detail.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === "ALL" || entry.status === filterStatus;
     const matchRole = filterRole === "ALL" || entry.role === filterRole;
     return matchSearch && matchStatus && matchRole;
   });
 
+  if (loading) {
+    return <div className="p-8 text-center text-slate-500">Loading Audit Logs...</div>;
+  }
+
   return (
     <div className="space-y-4">
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Actions", value: auditLog.length, color: "#6366f1" },
-          { label: "Success", value: auditLog.filter((e) => e.status === "SUCCESS").length, color: "#10b981" },
-          { label: "Failed", value: auditLog.filter((e) => e.status === "FAILED").length, color: "#ef4444" },
-          { label: "Unique Users", value: new Set(auditLog.map((e) => e.user)).size, color: "#f59e0b" },
+          { label: "Total Actions", value: localLogs.length, color: "#6366f1" },
+          { label: "Success", value: localLogs.filter((e) => e.status === "SUCCESS").length, color: "#10b981" },
+          { label: "Failed", value: localLogs.filter((e) => e.status === "FAILED").length, color: "#ef4444" },
+          { label: "Unique Users", value: new Set(localLogs.map((e) => e.user)).size, color: "#f59e0b" },
         ].map((s) => (
           <div key={s.label} className="rounded-2xl p-4 flex items-center gap-4" style={{ background: "white", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
             <div className="flex items-center justify-center rounded-xl flex-shrink-0" style={{ width: 40, height: 40, background: `${s.color}18` }}>
@@ -99,9 +116,9 @@ export function AuditLog() {
           </thead>
           <tbody>
             {filtered.map((entry) => {
-              const sc = statusConfig[entry.status];
+              const sc = statusConfig[entry.status as keyof typeof statusConfig] || statusConfig.SUCCESS;
               const ac = actionColors[entry.action] ?? { bg: "#f1f5f9", color: "#64748b" };
-              const rc = roleConfig[entry.role];
+              const rc = roleConfig[entry.role as UserRole] || { color: "#64748b", bg: "#f1f5f9" };
               return (
                 <tr key={entry.id} className="border-b" style={{ borderColor: "#f8fafc" }}>
                   <td className="px-5 py-3.5" style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>{entry.timestamp}</td>
@@ -127,7 +144,7 @@ export function AuditLog() {
           </tbody>
         </table>
         <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: "1px solid #f1f5f9" }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>Showing {filtered.length} of {auditLog.length} entries</span>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>Showing {filtered.length} of {localLogs.length} entries</span>
           <div className="flex gap-2">
             <button className="px-3 py-1.5 rounded-lg" style={{ background: "#f8fafc", color: "#64748b", fontSize: 12, border: "1px solid #e2e8f0", cursor: "pointer" }}>← Prev</button>
             <button className="px-3 py-1.5 rounded-lg" style={{ background: "#f8fafc", color: "#64748b", fontSize: 12, border: "1px solid #e2e8f0", cursor: "pointer" }}>Next →</button>

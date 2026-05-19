@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Filter, ChevronUp, ChevronDown, Eye, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { customers, Customer, RiskTier } from "../data/mockData";
+import { Customer, RiskTier } from "../data/mockData";
+import { PredictionService } from "../services/api";
 
 const riskConfig = {
   HIGH: { bg: "#fee2e2", color: "#ef4444", text: "HIGH" },
@@ -39,13 +40,48 @@ function ProbBar({ value }: { value: number }) {
 }
 
 export function CustomerList() {
+  const [customersData, setCustomersData] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterTier, setFilterTier] = useState<RiskTier | "ALL">("ALL");
   const [sortKey, setSortKey] = useState<keyof Customer>("churnProbability");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const filtered = customers
+  useEffect(() => {
+    PredictionService.getLatestBatchResults()
+      .then((res) => {
+        const mapped: Customer[] = res.results.map((r) => ({
+          id: r.customer_id || `ID-${r.row_index}`,
+          name: r.customer_id || `Customer ${r.row_index}`,
+          email: `${r.customer_id || r.row_index}@company.com`,
+          gender: r.gender || "Unknown",
+          senior: r.senior_citizen === 1,
+          tenure: r.tenure || 0,
+          contract: r.contract || "Unknown",
+          internetService: r.internet_service || "Unknown",
+          monthlyCharges: r.monthly_charges || 0,
+          totalCharges: r.total_charges || 0,
+          churnProbability: r.churn_probability,
+          riskTier: r.risk_tier as RiskTier,
+          lastPrediction: res.created_at.split("T")[0],
+          paymentMethod: r.payment_method || "Unknown",
+          numServices: [
+            r.phone_service, r.multiple_lines, r.online_security,
+            r.online_backup, r.device_protection, r.tech_support,
+            r.streaming_tv, r.streaming_movies
+          ].filter(s => s === "Yes").length,
+        }));
+        setCustomersData(mapped);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, []);
+
+  const filtered = customersData
     .filter((c) => {
       const matchSearch = search === "" || c.name.toLowerCase().includes(search.toLowerCase()) || c.id.toLowerCase().includes(search.toLowerCase());
       const matchTier = filterTier === "ALL" || c.riskTier === filterTier;
@@ -67,7 +103,15 @@ export function CustomerList() {
   const SortIcon = ({ k }: { k: keyof Customer }) =>
     sortKey === k ? (sortDir === "desc" ? <ChevronDown size={12} /> : <ChevronUp size={12} />) : <ChevronDown size={12} color="#d1d5db" />;
 
-  const counts = { HIGH: customers.filter((c) => c.riskTier === "HIGH").length, MEDIUM: customers.filter((c) => c.riskTier === "MEDIUM").length, LOW: customers.filter((c) => c.riskTier === "LOW").length };
+  const counts = { 
+    HIGH: customersData.filter((c) => c.riskTier === "HIGH").length, 
+    MEDIUM: customersData.filter((c) => c.riskTier === "MEDIUM").length, 
+    LOW: customersData.filter((c) => c.riskTier === "LOW").length 
+  };
+
+  if (loading) {
+    return <div className="p-8 text-center text-slate-500">Loading customer risk data...</div>;
+  }
 
   return (
     <div className="space-y-4">

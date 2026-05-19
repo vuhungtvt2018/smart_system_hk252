@@ -124,12 +124,33 @@ export function Prediction() {
       setBatchFile(file);
       setBatchStatus("processing");
       setBatchError("");
-      await PredictionService.batchPredict(file);
-      setBatchStatus("done");
-      fetchBatchHistory();
+      
+      const response = await PredictionService.batchPredict(file);
+      const jobId = response.job_id;
+      
+      const pollTimer = setInterval(async () => {
+        try {
+          const statusRes = await PredictionService.getBatchJobResults(jobId);
+          if (statusRes.status === "done") {
+            clearInterval(pollTimer);
+            setBatchStatus("done");
+            fetchBatchHistory();
+          } else if (statusRes.status === "error") {
+            clearInterval(pollTimer);
+            setBatchStatus("error");
+            setBatchError("Failed to process batch file");
+          }
+        } catch (err: any) {
+          clearInterval(pollTimer);
+          setBatchStatus("error");
+          setBatchError(err.message || "Failed to poll batch status");
+        }
+      }, 5000);
+      
+      fetchBatchHistory(); // Fetch immediately to show processing state
     } catch (err: any) {
       setBatchStatus("error");
-      setBatchError(err.message || "Failed to process batch file");
+      setBatchError(err.message || "Failed to upload batch file");
     }
   };
 

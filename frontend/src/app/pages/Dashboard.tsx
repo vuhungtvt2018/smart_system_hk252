@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -7,7 +7,7 @@ import {
   Users, TrendingDown, TrendingUp, AlertTriangle, CheckCircle,
   Brain, Activity, ArrowUpRight, ArrowDownRight, Clock, Zap
 } from "lucide-react";
-import { kpiStats, churnTrendData, riskDistributionData, featureImportance, retentionData, modelPerformanceData, customers, alerts } from "../data/mockData";
+import { DashboardService, DashboardMetrics, Alert } from "../services/api";
 
 const riskColor = { HIGH: "#ef4444", MEDIUM: "#f59e0b", LOW: "#10b981" };
 
@@ -38,7 +38,7 @@ function KpiCard({ icon, label, value, sub, trend, trendVal, color }: {
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 12 }}>{children}</h2>;
+  return <h2 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0, marginBottom: 12 }}>{children}</h2>;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -58,37 +58,63 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export function Dashboard() {
-  const highRiskCustomers = customers.filter((c) => c.riskTier === "HIGH").slice(0, 5);
-  const unreadAlerts = alerts.filter((a) => !a.read);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+
+  useEffect(() => {
+    DashboardService.getMetrics().then((data) => setMetrics(data)).catch(console.error);
+  }, []);
+
+  const unreadAlerts = metrics?.recentAlerts.filter((a) => !a.read) || [];
+  const criticalAlert = metrics?.recentAlerts.find(a => a.severity === 'critical' && !a.read);
+
+  if (!metrics) {
+    return <div className="p-8 text-center text-slate-500">Loading Dashboard Data...</div>;
+  }
 
   return (
     <div className="space-y-6">
       {/* Alert Banner */}
-      {unreadAlerts.some((a) => a.severity === "critical") && (
+      {criticalAlert && (
         <div className="flex items-center gap-3 px-5 py-3 rounded-2xl" style={{ background: "linear-gradient(90deg, #fef2f2, #fff7ed)", border: "1px solid #fca5a5" }}>
           <AlertTriangle size={18} color="#ef4444" />
           <div className="flex-1">
             <span style={{ fontWeight: 600, color: "#dc2626", fontSize: 13 }}>Critical Alert: </span>
-            <span style={{ color: "#92400e", fontSize: 13 }}>Data drift detected on 'internetService' (PSI=0.21). Auto-retrain triggered.</span>
+            <span style={{ color: "#92400e", fontSize: 13 }}>{criticalAlert.title} - {criticalAlert.message}</span>
           </div>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>07:45 today</span>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>{criticalAlert.timestamp}</span>
         </div>
       )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={<Users size={20} />} label="Total Customers" value={kpiStats.totalCustomers.toLocaleString()} sub="Analyzed this cycle" color="#6366f1" />
-        <KpiCard icon={<TrendingDown size={20} />} label="Churn Rate (Mar)" value={`${kpiStats.churnRateMonth}%`} sub={`Was ${kpiStats.churnRatePrev}% in Feb`} trend="down" trendVal="-0.9%" color="#ef4444" />
-        <KpiCard icon={<AlertTriangle size={20} />} label="HIGH Risk" value={kpiStats.highRisk} sub="Priority retention contacts" trend="up" trendVal="+24 today" color="#ef4444" />
-        <KpiCard icon={<Brain size={20} />} label="Model AUC" value={kpiStats.modelAUC} sub="XGBoost v2.3.1 · Production" trend="down" trendVal="+0.009" color="#6366f1" />
+        <KpiCard icon={<Users size={20} />} label="Total Customers" value={metrics.totalCustomers.toLocaleString()} sub="Analyzed in latest batch" color="#6366f1" />
+        <KpiCard 
+          icon={<TrendingDown size={20} />} 
+          label={`Churn Rate (${metrics.lastBatchRun.split(' · ')[1] || 'Latest'})`} 
+          value={`${metrics.churnRate}%`} 
+          sub={`Was ${metrics.prevChurnRate}% in prev run`} 
+          trend={metrics.churnRate <= metrics.prevChurnRate ? "down" : "up"} 
+          trendVal={`${(metrics.churnRate - metrics.prevChurnRate).toFixed(1)}%`} 
+          color="#ef4444" 
+        />
+        <KpiCard icon={<AlertTriangle size={20} />} label="HIGH Risk" value={metrics.highRisk} sub="Priority retention contacts" trend="up" trendVal="latest job" color="#ef4444" />
+        <KpiCard icon={<Brain size={20} />} label="Model AUC" value={metrics.modelAUC} sub="Production Champion" color="#6366f1" />
       </div>
 
       {/* Second row KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={<CheckCircle size={20} />} label="Retention Rate" value={`${kpiStats.retentionRate}%`} sub="Inverse of churn rate" trend="down" trendVal="+0.9%" color="#10b981" />
-        <KpiCard icon={<Activity size={20} />} label="Model Recall" value={kpiStats.modelRecall} sub="Target: ≥0.80 · PASSING" color="#10b981" />
-        <KpiCard icon={<Activity size={20} />} label="Model F1" value={kpiStats.modelF1} sub="Target: ≥0.75 · PASSING" color="#f59e0b" />
-        <KpiCard icon={<Clock size={20} />} label="Last Batch Run" value="05:00 AM" sub="Mar 30 · 1,043 processed" color="#3b82f6" />
+        <KpiCard 
+          icon={<CheckCircle size={20} />} 
+          label="Retention Rate" 
+          value={`${metrics.retentionRate}%`} 
+          sub="Inverse of churn rate" 
+          trend={metrics.retentionRate >= (100 - metrics.prevChurnRate) ? "down" : "up"} 
+          trendVal={`${(metrics.retentionRate - (100 - metrics.prevChurnRate)).toFixed(1)}%`} 
+          color="#10b981" 
+        />
+        <KpiCard icon={<Activity size={20} />} label="Model Recall" value={metrics.modelRecall} sub="Current Evaluation" color="#10b981" />
+        <KpiCard icon={<Activity size={20} />} label="Model F1" value={metrics.modelF1} sub="Current Evaluation" color="#f59e0b" />
+        <KpiCard icon={<Clock size={20} />} label="Last Batch Run" value={metrics.lastBatchRun.split(' · ')[0]} sub={metrics.lastBatchRun.split(' · ')[1] || ""} color="#3b82f6" />
       </div>
 
       {/* Charts Row 1 */}
@@ -97,7 +123,7 @@ export function Dashboard() {
         <div className="col-span-12 lg:col-span-8 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <SectionTitle>Churn Rate Trend (Last 6 Months)</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={churnTrendData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+            <AreaChart data={metrics.churnTrend} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
               <defs>
                 <linearGradient id="cgHigh" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
@@ -129,16 +155,16 @@ export function Dashboard() {
           <SectionTitle>Risk Distribution</SectionTitle>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
-              <Pie data={riskDistributionData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} dataKey="value">
-                {riskDistributionData.map((entry, index) => (
+              <Pie data={metrics.riskDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} dataKey="value">
+                {metrics.riskDistribution.map((entry, index) => (
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value, name) => [`${value} customers`, name]} />
+              <Tooltip formatter={(value: any, name: any) => [`${value} customers`, name]} />
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-2 mt-1">
-            {riskDistributionData.map((d) => (
+            {metrics.riskDistribution.map((d) => (
               <div key={d.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-sm" style={{ background: d.color, flexShrink: 0 }} />
@@ -146,7 +172,9 @@ export function Dashboard() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{d.value}</span>
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>{((d.value / kpiStats.totalCustomers) * 100).toFixed(1)}%</span>
+                  <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                    {metrics.totalCustomers > 0 ? ((d.value / metrics.totalCustomers) * 100).toFixed(1) : 0}%
+                  </span>
                 </div>
               </div>
             ))}
@@ -160,7 +188,7 @@ export function Dashboard() {
         <div className="col-span-12 lg:col-span-7 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <SectionTitle>Model Performance (8-week trend)</SectionTitle>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={modelPerformanceData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+            <BarChart data={metrics.modelPerformanceTrend} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="week" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis domain={[0.7, 0.95]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -177,7 +205,7 @@ export function Dashboard() {
         <div className="col-span-12 lg:col-span-5 rounded-2xl p-5" style={{ background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
           <SectionTitle>Top Feature Importance</SectionTitle>
           <div className="space-y-2.5 mt-1">
-            {featureImportance.map((f, i) => (
+            {metrics.topFeatureImportance.map((f, i) => (
               <div key={f.feature}>
                 <div className="flex items-center justify-between mb-1">
                   <span style={{ fontSize: 12, color: "#475569", fontWeight: 500 }}>{f.feature}</span>
@@ -195,6 +223,9 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
+            {metrics.topFeatureImportance.length === 0 && (
+              <div className="text-center text-sm text-slate-400 py-4">No feature importance available</div>
+            )}
           </div>
         </div>
       </div>
@@ -208,14 +239,14 @@ export function Dashboard() {
             <a href="/customers" style={{ fontSize: 12, color: "#6366f1", fontWeight: 600 }}>View all →</a>
           </div>
           <div className="space-y-2">
-            {highRiskCustomers.map((c) => (
+            {metrics.topHighRiskCustomers.map((c) => (
               <div key={c.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "#fafafa", border: "1px solid #f1f5f9" }}>
                 <div className="flex items-center justify-center rounded-lg flex-shrink-0" style={{ width: 34, height: 34, background: "#fee2e2" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ef4444" }}>{c.name.split(" ").map((n) => n[0]).join("")}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ef4444" }}>{c.name.substring(0, 2).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.id} · {c.contract}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.id}</div>
                 </div>
                 <div className="text-right">
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#ef4444" }}>{(c.churnProbability * 100).toFixed(0)}%</div>
@@ -226,6 +257,9 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
+            {metrics.topHighRiskCustomers.length === 0 && (
+              <div className="text-center text-sm text-slate-400 py-4">No high-risk customers found</div>
+            )}
           </div>
         </div>
 
@@ -236,18 +270,18 @@ export function Dashboard() {
             <a href="/alerts" style={{ fontSize: 12, color: "#6366f1", fontWeight: 600 }}>View all →</a>
           </div>
           <div className="space-y-2">
-            {alerts.slice(0, 4).map((a) => {
-              const colors = {
+            {metrics.recentAlerts.slice(0, 4).map((a) => {
+              const colors: any = {
                 critical: { bg: "#fef2f2", dot: "#ef4444", text: "#dc2626" },
                 warning: { bg: "#fffbeb", dot: "#f59e0b", text: "#d97706" },
                 info: { bg: "#eff6ff", dot: "#3b82f6", text: "#2563eb" },
               };
-              const c = colors[a.severity];
+              const c = colors[a.severity] || colors.info;
               return (
                 <div key={a.id} className="flex items-start gap-3 px-3 py-2.5 rounded-xl" style={{ background: c.bg }}>
                   <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: c.dot }} />
                   <div className="flex-1 min-w-0">
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }} className="truncate">{a.title}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }} title={a.message} className="truncate">{a.title}</div>
                     <div style={{ fontSize: 11, color: "#64748b" }}>{a.timestamp}</div>
                   </div>
                   {!a.read && (
@@ -256,9 +290,13 @@ export function Dashboard() {
                 </div>
               );
             })}
+            {metrics.recentAlerts.length === 0 && (
+              <div className="text-center text-sm text-slate-400 py-4">No recent alerts</div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

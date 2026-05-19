@@ -117,6 +117,30 @@ def get_batch_history(
     ]
 
 
+@router.get("/batch/latest/results", response_model=BatchPredictionResponse)
+def get_latest_batch_results(
+    db: Session = Depends(get_db),
+):
+    """Get the full results of the most recent batch job."""
+    jobs = prediction_service.get_batch_jobs(db, skip=0, limit=1)
+    if not jobs:
+        raise HTTPException(status_code=404, detail="No batch jobs found")
+
+    job = prediction_service.get_batch_job_detail(db, jobs[0].id)
+    results = [BatchPredictionResultItem(**r) for r in (job.results_json or [])]
+    return BatchPredictionResponse(
+        job_id=job.id,
+        filename=job.filename,
+        processed_count=job.processed_count,
+        high_count=job.high_count,
+        medium_count=job.medium_count,
+        low_count=job.low_count,
+        status=job.status,
+        results=results,
+        created_at=job.created_at,
+    )
+
+
 @router.get("/batch/{job_id}/results", response_model=BatchPredictionResponse)
 def get_batch_job_results(
     job_id: int,

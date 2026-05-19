@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.controller import prediction_controller, model_registry_controller, training_controller
+from api.controller import prediction_controller, model_registry_controller, training_controller, dashboard_controller, admin_controller, monitoring_controller
 from api.database.session import engine
 from api.database.model import Base
 
@@ -21,9 +21,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(dashboard_controller.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(prediction_controller.router, prefix="/api/v1/predictions", tags=["Predictions"])
 app.include_router(model_registry_controller.router, prefix="/api/v1/model-registry", tags=["Model Registry"])
 app.include_router(training_controller.router, prefix="/api/v1/training", tags=["Training Pipeline"])
+app.include_router(monitoring_controller.router, prefix="/api/v1/monitoring", tags=["Monitoring"])
+app.include_router(admin_controller.router, prefix="/api/v1/admin", tags=["Admin"])
 
 @app.get("/")
 def root():

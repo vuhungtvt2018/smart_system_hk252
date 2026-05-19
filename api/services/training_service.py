@@ -33,11 +33,40 @@ class TrainingService:
         return file_path
 
     @staticmethod
+    async def save_test_dataset(file: UploadFile) -> str:
+        """
+        Saves the uploaded test dataset, always overwriting as 'test_dataset.csv'.
+        """
+        file_path = os.path.join(DATA_DIR, "test_dataset.csv")
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return file_path
+
+    @staticmethod
+    def has_test_dataset() -> bool:
+        """
+        Checks if 'test_dataset.csv' exists in the uploaded directory.
+        """
+        file_path = os.path.join(DATA_DIR, "test_dataset.csv")
+        return os.path.exists(file_path)
+
+    @staticmethod
     def trigger_airflow_dag(dataset_path: str) -> dict:
         """
         Triggers the Airflow DAG 'retrain_pipeline' using the Airflow REST API.
         """
-        data = {"conf": {"dataset_path": dataset_path}}
+        filename = os.path.basename(dataset_path)
+        container_path = f"/app/data/uploaded/{filename}"
+        
+        if not TrainingService.has_test_dataset():
+            return {"status": "error", "message": "A test dataset is required but none was found in the directory."}
+            
+        data = {
+            "conf": {
+                "dataset_path": container_path,
+                "test_dataset_path": "/app/data/uploaded/test_dataset.csv"
+            }
+        }
 
         req = urllib.request.Request(
             AIRFLOW_URL,

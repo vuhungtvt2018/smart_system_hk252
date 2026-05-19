@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AlertTriangle, Info, CheckCircle, Bell, BellOff, Filter } from "lucide-react";
-import { alerts, Alert } from "../data/mockData";
+import { Alert, DashboardService } from "../services/api";
 
 const severityConfig = {
   critical: { bg: "#fef2f2", border: "#fecaca", dot: "#ef4444", icon: <AlertTriangle size={16} color="#ef4444" />, label: "Critical", labelColor: "#dc2626", labelBg: "#fee2e2" },
@@ -18,7 +18,20 @@ const typeConfig: Record<Alert["type"], { label: string; color: string }> = {
 export function Alerts() {
   const [filterSeverity, setFilterSeverity] = useState<"all" | Alert["severity"]>("all");
   const [filterType, setFilterType] = useState<"all" | Alert["type"]>("all");
-  const [localAlerts, setLocalAlerts] = useState(alerts);
+  const [localAlerts, setLocalAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    DashboardService.getAlerts()
+      .then((data) => {
+        setLocalAlerts(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, []);
 
   const filtered = localAlerts.filter((a) => {
     const matchSev = filterSeverity === "all" || a.severity === filterSeverity;
@@ -30,6 +43,10 @@ export function Alerts() {
   const markAllRead = () => setLocalAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
 
   const unread = localAlerts.filter((a) => !a.read).length;
+
+  if (loading) {
+    return <div className="p-8 text-center text-slate-500">Loading alerts...</div>;
+  }
 
   return (
     <div className="space-y-4">

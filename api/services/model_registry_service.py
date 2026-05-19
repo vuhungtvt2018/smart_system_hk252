@@ -8,7 +8,7 @@ from api.database.model import (
     MLflowRegisteredModelAlias, MLflowRegisteredModelTag,
 )
 from api.schemas.model_registry_schema import ModelVersionSchema
-from datetime import datetime
+from datetime import datetime, timedelta
 
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
@@ -86,11 +86,13 @@ def get_registered_models(db: Session):
         # Format dates
         trained_at = "Unknown"
         if run and run.start_time:
-            trained_at = datetime.fromtimestamp(run.start_time / 1000.0).strftime('%Y-%m-%d %H:%M')
+            trained_dt = datetime.fromtimestamp(run.start_time / 1000.0) + timedelta(hours=7)
+            trained_at = trained_dt.strftime('%Y-%m-%d %I:%M %p')
 
         promoted_at = None
         if v.last_updated_time:
-            promoted_at = datetime.fromtimestamp(v.last_updated_time / 1000.0).strftime('%Y-%m-%d %H:%M')
+            promoted_dt = datetime.fromtimestamp(v.last_updated_time / 1000.0) + timedelta(hours=7)
+            promoted_at = promoted_dt.strftime('%Y-%m-%d %I:%M %p')
 
         result.append(ModelVersionSchema(
             id=f"{v.name}_{v.version}",

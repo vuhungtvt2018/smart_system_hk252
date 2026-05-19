@@ -10,7 +10,7 @@ import xgboost as xgb
 from itertools import combinations
 from sklearn.metrics import (
     roc_auc_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report, roc_curve, auc, precision_recall_curve, average_precision_score
+    confusion_matrix, classification_report
 )
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import TargetEncoder
@@ -64,29 +64,51 @@ CATS = [
 NUMS = ["tenure", "MonthlyCharges", "TotalCharges"]
 
 # -- Data Loading & Feature Engineering Helpers --
-def load_datasets(dataset_path: str) -> tuple:
+def load_datasets(dataset_path: str, test_dataset_path: str = None) -> tuple:
     from sklearn.model_selection import train_test_split
     
-    orig = pd.read_csv(dataset_path)
-    
-    # Preprocessing to ensure target exists and is formatted
-    if CFG.TARGET in orig.columns:
-        if orig[CFG.TARGET].dtype == object:
-            orig[CFG.TARGET] = orig[CFG.TARGET].map({"No": 0, "Yes": 1}).astype(int)
-    
-    orig["TotalCharges"] = pd.to_numeric(orig["TotalCharges"], errors="coerce")
-    orig["TotalCharges"].fillna(orig["TotalCharges"].median(), inplace=True)
-    if "customerID" in orig.columns:
-        orig.drop(columns=["customerID"], inplace=True)
+    def read_clean_csv(path):
+        import io
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
         
-    # Split into train and test
-    train, test = train_test_split(orig, test_size=0.2, random_state=CFG.RANDOM_SEED, stratify=orig[CFG.TARGET])
-    
-    # reset index
-    train.reset_index(drop=True, inplace=True)
-    test.reset_index(drop=True, inplace=True)
+        cleaned_lines = []
+        for line in lines:
+            line = line.strip()
+            if line.startswith('"') and line.endswith('"') and line.count('"') == 2:
+                line = line[1:-1]
+            cleaned_lines.append(line)
+            
+        df = pd.read_csv(io.StringIO("\n".join(cleaned_lines)))
+        
+        if CFG.TARGET in df.columns:
+            df = df.dropna(subset=[CFG.TARGET])
+            if df[CFG.TARGET].dtype == object:
+                df[CFG.TARGET] = df[CFG.TARGET].map({"No": 0, "Yes": 1, "no": 0, "yes": 1, "0": 0, "1": 1}).fillna(-1).astype(int)
+                df = df[df[CFG.TARGET] != -1]
+        
+        df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
+        df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
+        if "customerID" in df.columns:
+            df.drop(columns=["customerID"], inplace=True)
+            
+        return df
 
-    return train, test, orig
+    orig = read_clean_csv(dataset_path)
+    
+    if test_dataset_path:
+        test = read_clean_csv(test_dataset_path)
+        train = orig
+        orig_combined = pd.concat([train, test], ignore_index=True)
+        
+        train.reset_index(drop=True, inplace=True)
+        test.reset_index(drop=True, inplace=True)
+        return train, test, orig_combined
+    else:
+        train, test = train_test_split(orig, test_size=0.2, random_state=CFG.RANDOM_SEED, stratify=orig[CFG.TARGET])
+        train.reset_index(drop=True, inplace=True)
+        test.reset_index(drop=True, inplace=True)
+        return train, test, orig
 
 def add_frequency_encoding(train, test, orig, num_cols, new_nums):
     for col in num_cols:
@@ -379,9 +401,9 @@ from xgb_worker import (
     prepare_for_xgboost
 )
 
-def train_fold_mlflow(fold_idx, dataset_path, tracking_uri, experiment_name):
+def train_fold_mlflow(fold_idx, dataset_path, test_dataset_path, tracking_uri, experiment_name):
     # 1. Load Data
-    train_df, test_df, orig_df = load_datasets(dataset_path)
+    train_df, test_df, orig_df = load_datasets(dataset_path, test_dataset_path)
     
     # 2. Feature Engineering
     FEATURES, TE_COLUMNS, TE_NGRAM_COLUMNS, TO_REMOVE, NUM_AS_CAT = do_feature_engineering(train_df, test_df, orig_df)
@@ -499,43 +521,6 @@ def train_fold_mlflow(fold_idx, dataset_path, tracking_uri, experiment_name):
         plt.close(fig)
         if os.path.exists(png_path): os.unlink(png_path)
 
-        # --- ROC CURVE ---
-        fpr, tpr, _ = roc_curve(y_val, oof_preds)
-        roc_auc = auc(fpr, tpr)
-            
-        plt.figure(figsize=(6, 5))
-        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC (area = {roc_auc:.2f})')
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('ROC Curve - Validation Set')
-        plt.legend(loc="lower right")
-            
-        roc_path = "roc_curve.png"
-        plt.savefig(roc_path)
-        mlflow.log_artifact(roc_path, "evaluation")
-        plt.close()
-
-        # --- PRECISION-RECALL CURVE ---
-        precision, recall, _ = precision_recall_curve(y_val, oof_preds)
-        ap_score = average_precision_score(y_val, oof_preds)
-            
-        plt.figure(figsize=(6, 5))
-        plt.plot(recall, precision, color='green', lw=2, label=f'AP = {ap_score:.2f}')
-        plt.xlabel('Recall')
-        plt.ylabel('Precision')
-        plt.title('PR Curve - Validation Set')
-        plt.legend(loc="upper right")
-            
-        pr_path = "pr_curve.png"
-        plt.savefig(pr_path)
-        mlflow.log_artifact(pr_path, "evaluation")
-        plt.close()
-
-        # Dọn dẹp file tạm sau khi log
-        if os.path.exists(roc_path): os.remove(roc_path)
-        if os.path.exists(pr_path): os.remove(pr_path)
-
         # --- JSON (all features, sorted descending) ---
         all_sorted_idx = np.argsort(importances)[::-1]
         fi_data = {
@@ -590,8 +575,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="XGBoost Airflow Training Script")
     parser.add_argument("--fold", type=int, required=True, help="Fold index to train (0-19)")
     parser.add_argument("--dataset_path", type=str, required=True, help="Path to uploaded dataset CSV")
+    parser.add_argument("--test_dataset_path", type=str, default=None, help="Path to uploaded test dataset CSV")
     parser.add_argument("--tracking_uri", type=str, default="http://localhost:5000", help="MLflow Tracking URI")
     parser.add_argument("--experiment_name", type=str, default="XGBoost_Churn_Pipeline", help="MLflow Experiment Name")
     args = parser.parse_args()
     
-    train_fold_mlflow(args.fold, args.dataset_path, args.tracking_uri, args.experiment_name)
+    train_fold_mlflow(args.fold, args.dataset_path, args.test_dataset_path, args.tracking_uri, args.experiment_name)
